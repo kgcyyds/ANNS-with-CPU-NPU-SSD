@@ -1,0 +1,134 @@
+// #ifndef _SPTAG_COMMON_INSTRUCTIONUTILS_H_
+// #define _SPTAG_COMMON_INSTRUCTIONUTILS_H_
+
+// #include <string>
+// #include <vector>
+// #include <bitset>
+// #include <array>
+
+// #ifndef GPU
+
+// #ifndef _MSC_VER
+// #include <cpuid.h>
+// #include <xmmintrin.h>
+// #include <immintrin.h>
+
+// void cpuid(int info[4], int InfoType);
+
+// #else
+// #include <intrin.h>
+// #define cpuid(info, x)    __cpuidex(info, x, 0)
+// #endif
+
+// #endif
+
+// namespace SPTAG {
+//     namespace COMMON {
+
+//         class InstructionSet
+//         {
+//             // forward declarations
+//             class InstructionSet_Internal;
+
+//         public:
+//             // getters
+//             static bool AVX(void);
+//             static bool SSE(void);
+//             static bool SSE2(void);
+//             static bool AVX2(void);
+//             static bool AVX512(void);
+//             static void PrintInstructionSet(void);
+
+//         private:
+//             static const InstructionSet_Internal CPU_Rep;
+
+//             class InstructionSet_Internal
+//             {
+//             public:
+//                 InstructionSet_Internal();
+//                 bool HW_SSE;
+//                 bool HW_SSE2;
+//                 bool HW_AVX;
+//                 bool HW_AVX2;
+//                 bool HW_AVX512;
+//             };
+//         };
+//     }
+// }
+
+// #endif
+#ifndef _SPTAG_COMMON_INSTRUCTIONUTILS_H_
+#define _SPTAG_COMMON_INSTRUCTIONUTILS_H_
+
+#include <string>
+#include <vector>
+#include <bitset>
+#include <array>
+
+#ifndef GPU
+
+#if defined(__x86_64__) || defined(__i386__) || defined(_M_IX86) || defined(_M_X64)
+    // x86/x64 架构
+    #ifndef _MSC_VER
+        #include <cpuid.h>
+        #include <xmmintrin.h>
+        #include <immintrin.h>
+        void cpuid(int info[4], int InfoType);
+    #else
+        #include <intrin.h>
+        #define cpuid(info, x)    __cpuidex(info, x, 0)
+    #endif
+#elif defined(__aarch64__) || defined(__arm__)
+    // ARM/ARM64 架构
+    #ifdef __ARM_NEON
+        #include <arm_neon.h>
+    #endif
+    #include <sys/auxv.h>
+    #include <asm/hwcap.h>
+#endif
+
+#endif
+
+namespace SPTAG {
+    namespace COMMON {
+
+        class InstructionSet
+        {
+            // forward declarations
+            class InstructionSet_Internal;
+
+        public:
+            // getters
+            static bool AVX(void);
+            static bool SSE(void);
+            static bool SSE2(void);
+            static bool AVX2(void);
+            static bool AVX512(void);
+            // ARM 特有的指令集检测
+            static bool NEON(void);
+            static bool SVE(void);
+            static void PrintInstructionSet(void);
+
+        private:
+            static const InstructionSet_Internal CPU_Rep;
+
+            class InstructionSet_Internal
+            {
+            public:
+                InstructionSet_Internal();
+                
+                // x86 特性
+                bool HW_SSE;
+                bool HW_SSE2;
+                bool HW_AVX;
+                bool HW_AVX2;
+                bool HW_AVX512;
+                
+                // ARM 特性
+                bool HW_NEON;
+                bool HW_SVE;
+            };
+        };
+    }
+}
+#endif

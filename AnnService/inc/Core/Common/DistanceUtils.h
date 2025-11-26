@@ -1,0 +1,106 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#ifndef _SPTAG_COMMON_DISTANCEUTILS_H_
+#define _SPTAG_COMMON_DISTANCEUTILS_H_
+
+#include <functional>
+#include <iostream>
+
+#include "CommonUtils.h"
+#include "InstructionUtils.h"
+
+namespace SPTAG
+{
+    namespace COMMON
+    {
+        template <typename T>
+        using DistanceCalcReturn = float(*)(const T*, const T*, DimensionType);
+        template<typename T>
+        inline DistanceCalcReturn<T> DistanceCalcSelector(SPTAG::DistCalcMethod p_method);
+
+        class DistanceUtils
+        {
+        public:
+            template <typename T>
+            static float ComputeL2Distance(const T* pX, const T* pY, DimensionType length)
+            {
+                const T* pEnd4 = pX + ((length >> 2) << 2);
+                const T* pEnd1 = pX + length;
+
+                float diff = 0;
+
+                while (pX < pEnd4) {
+                    float c1 = ((float)(*pX++) - (float)(*pY++)); diff += c1 * c1;
+                    c1 = ((float)(*pX++) - (float)(*pY++)); diff += c1 * c1;
+                    c1 = ((float)(*pX++) - (float)(*pY++)); diff += c1 * c1;
+                    c1 = ((float)(*pX++) - (float)(*pY++)); diff += c1 * c1;
+                }
+                while (pX < pEnd1) {
+                    float c1 = ((float)(*pX++) - (float)(*pY++)); diff += c1 * c1;
+                }
+                return diff;
+            }
+
+            template <typename T>
+            static float ComputeCosineDistance(const T* pX, const T* pY, DimensionType length)
+            {
+                const T* pEnd4 = pX + ((length >> 2) << 2);
+                const T* pEnd1 = pX + length;
+
+                float diff = 0;
+
+                while (pX < pEnd4)
+                {
+                    float c1 = ((float)(*pX++) * (float)(*pY++)); diff += c1;
+                    c1 = ((float)(*pX++) * (float)(*pY++)); diff += c1;
+                    c1 = ((float)(*pX++) * (float)(*pY++)); diff += c1;
+                    c1 = ((float)(*pX++) * (float)(*pY++)); diff += c1;
+                }
+                while (pX < pEnd1) diff += ((float)(*pX++) * (float)(*pY++));
+                int base = Utils::GetBase<T>();
+                return base * base - diff;
+            }
+
+            template<typename T>
+            static inline float ComputeDistance(const T* p1, const T* p2, DimensionType length, SPTAG::DistCalcMethod distCalcMethod)
+            {
+                auto func = DistanceCalcSelector<T>(distCalcMethod);
+                return func(p1, p2, length);
+            }
+
+            static inline float ConvertCosineSimilarityToDistance(float cs)
+            {
+                // Cosine similarity is in [-1, 1], the higher the value, the closer are the two vectors. 
+                // However, the tree is built and searched based on "distance" between two vectors, that's >=0. The smaller the value, the closer are the two vectors.
+                // So we do a linear conversion from a cosine similarity to a distance value.
+                return 1 - cs; //[1, 3]
+            }
+
+            static inline float ConvertDistanceBackToCosineSimilarity(float d)
+            {
+                return 1 - d;
+            }
+        };
+        template<typename T>
+        inline DistanceCalcReturn<T> DistanceCalcSelector(SPTAG::DistCalcMethod p_method)
+        {
+            // bool isSize4 = (sizeof(T) == 4);
+            switch (p_method)
+            {
+            case SPTAG::DistCalcMethod::InnerProduct:
+            case SPTAG::DistCalcMethod::Cosine:
+                return &(DistanceUtils::ComputeCosineDistance);
+
+            case SPTAG::DistCalcMethod::L2:
+                return &(DistanceUtils::ComputeL2Distance);
+
+            default:
+                break;
+            }
+            return nullptr;
+        }
+    }
+}
+
+#endif // _SPTAG_COMMON_DISTANCEUTILS_H_
