@@ -379,7 +379,7 @@ namespace SPTAG
                 aclrtMallocHost((void **)&h_dist, sizeof(float) * totalNumVec * numThreads);
 
                 bool isWarmup = false;
-                
+
                 if (!warmupFile.empty())
                 {
                     SPTAGLIB_LOG(Helper::LogLevel::LL_Info, "Start loading warmup query set...\n");
@@ -561,30 +561,6 @@ namespace SPTAG
                     },
                     "%.3lf");
                 
-                SPTAGLIB_LOG(Helper::LogLevel::LL_Info, "\nCast Distribution:\n");
-                PrintPercentiles<double, SPANN::SearchStats>(
-                    stats,
-                    [](const SPANN::SearchStats &ss) -> double
-                    {
-                        return ss.cast;
-                    },
-                    "%.3lf");
-                SPTAGLIB_LOG(Helper::LogLevel::LL_Info, "\nGather Distribution:\n");
-                PrintPercentiles<double, SPANN::SearchStats>(
-                    stats,
-                    [](const SPANN::SearchStats &ss) -> double
-                    {
-                        return ss.gather;
-                    },
-                    "%.3lf");
-                SPTAGLIB_LOG(Helper::LogLevel::LL_Info, "\nSum Distribution:\n");
-                PrintPercentiles<double, SPANN::SearchStats>(
-                    stats,
-                    [](const SPANN::SearchStats &ss) -> double
-                    {
-                        return ss.sum;
-                    },
-                    "%.3lf");
                 SPTAGLIB_LOG(Helper::LogLevel::LL_Info, "\nVector Latency0 Distribution:\n");
                 PrintPercentiles<double, SPANN::SearchStats>(
                     stats,

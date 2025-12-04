@@ -72,12 +72,6 @@ namespace SPTAG {
 
             double npu2cpu;
 
-            double cast;
-
-            double gather;
-
-            double sum;
-
             //向量延迟
             double vectorLatency1;
 

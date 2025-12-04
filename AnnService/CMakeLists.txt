@@ -64,6 +64,30 @@ add_library (DistanceUtils STATIC
 #     target_compile_options(DistanceUtils PRIVATE -mavx2 -mavx -msse -msse2 -mavx512f -mavx512bw -mavx512dq -fPIC)
 # endif()
 
+if(${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU")
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
+        target_compile_options(DistanceUtils PRIVATE 
+            -march=armv8-a+simd
+            -mtune=native
+            -O3
+            -fPIC
+        )
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "arm|ARM")
+        target_compile_options(DistanceUtils PRIVATE 
+            -march=armv7-a
+            -mfpu=neon
+            -mfloat-abi=hard
+            -O3
+            -fPIC
+        )
+    else()
+        target_compile_options(DistanceUtils PRIVATE 
+            -mavx2 -mavx -msse -msse2 -mavx512f -mavx512bw -mavx512dq
+            -fPIC
+        )
+    endif()
+endif()
+
 add_library (SPTAGLib SHARED ${SRC_FILES} ${HDR_FILES})
 target_link_libraries (SPTAGLib DistanceUtils libzstd_shared ${NUMA_LIBRARY} ascendc_kernels_${RUN_MODE} ${ASCEND_CANN_PACKAGE_PATH}/lib64/libascendcl.so ${ASCEND_CANN_PACKAGE_PATH}/lib64/libnnopbase.so ${ASCEND_CANN_PACKAGE_PATH}/lib64/libopapi.so)
 add_library (SPTAGLibStatic STATIC ${SRC_FILES} ${HDR_FILES})

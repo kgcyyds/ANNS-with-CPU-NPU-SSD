@@ -30,6 +30,10 @@ namespace SPTAG
                     *pX++ += *pY++;
                 }
             }
+            static void ComputeSum_NEON(std::int8_t* pX, const std::int8_t* pY, DimensionType length);
+            static void ComputeSum_NEON(std::uint8_t* pX, const std::uint8_t* pY, DimensionType length);
+            static void ComputeSum_NEON(std::int16_t* pX, const std::int16_t* pY, DimensionType length);
+            static void ComputeSum_NEON(float* pX, const float* pY, DimensionType length);
 
             template<typename T>
             static inline void ComputeSum(T* p1, const T* p2, DimensionType length)
@@ -42,6 +46,10 @@ namespace SPTAG
         template<typename T>
         inline SumCalcReturn<T> SumCalcSelector()
         {
+            if (InstructionSet::NEON())
+            {
+                return &(SIMDUtils::ComputeSum_NEON);
+            }
             return &(SIMDUtils::ComputeSum_Naive);
         }
     }

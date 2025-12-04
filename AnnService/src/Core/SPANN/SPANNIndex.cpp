@@ -687,14 +687,14 @@ namespace SPTAG
             }
 
             int totalNumVector = vectorIDs.size();
-            int numVectorGPU = totalNumVector;
+            int numVectorCPU = vectorIDs.size() * 0.5;
+            int numVectorGPU = totalNumVector - numVectorCPU;
 
             uint8_t *h_table = reinterpret_cast<uint8_t *>(queryResults->GetnewPQTarget());
             int tableBytes = 256 * PQVectorDim * sizeof(float);
             uint8_t *table_temp = d_table + sizeof(uint8_t) * tableBytes * threadOrder;
             float *dist_temp = d_dist + totalNumVec * threadOrder;
             float *h_dist_temp = h_dist + totalNumVec * threadOrder;
-            uint8_t *h_set = (uint8_t *)d_PQVectorSet;
             uint8_t *d_set;
             uint8_t *d_gather;
             uint8_t *d_cast;
@@ -705,7 +705,7 @@ namespace SPTAG
             aclrtMalloc((void **)&d_set, numVectorGPU * PQVectorDim * sizeof(uint8_t), ACL_MEM_MALLOC_HUGE_FIRST);
             aclrtMemcpy(table_temp, tableBytes, h_table, tableBytes, ACL_MEMCPY_HOST_TO_DEVICE);
             for (int i = 0; i < numVectorGPU; i ++)
-                memcpy(tmp + i * PQVectorDim, h_set + vectorIDs[i] * PQVectorDim, PQVectorDim);
+                memcpy(tmp + i * PQVectorDim, vectorSet->GetVector(vectorIDs[i]), PQVectorDim);
             aclrtMemcpy(d_set, numVectorGPU * PQVectorDim, tmp, numVectorGPU * PQVectorDim, ACL_MEMCPY_HOST_TO_DEVICE);
             auto comEndTime1 = std::chrono::high_resolution_clock::now();
             std::chrono::duration<double, std::milli> comelapsed1 = comEndTime1 - comStartTime1;
@@ -732,18 +732,12 @@ namespace SPTAG
             void* workspaceAddr1 = nullptr;
             void* workspaceAddr2 = nullptr;
             void* workspaceAddr3 = nullptr;
-            auto comStartTimeCast = std::chrono::high_resolution_clock::now();
             uint64_t workspaceSize1 = 0;
             aclOpExecutor* executor1;
             aclnnCastGetWorkspaceSize(set_tensor, aclDataType::ACL_INT32, cast_tensor, &workspaceSize1, &executor1);
             if (workspaceSize1 > 0)
                 aclrtMalloc(&workspaceAddr1, workspaceSize1, ACL_MEM_MALLOC_HUGE_FIRST);
             aclnnCast(workspaceAddr1, workspaceSize1, executor1, stream);
-            auto comEndTimeCast = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double, std::milli> comelapsedCast = comEndTimeCast - comStartTimeCast;
-            double comelapsedMillisecondsCast = comelapsedCast.count();
-            p_stats->cast = comelapsedMillisecondsCast;
-            auto comStartTimeGather = std::chrono::high_resolution_clock::now();
             uint64_t workspaceSize2 = 0;
             aclOpExecutor* executor2;
             int64_t dim = 0;
@@ -751,21 +745,31 @@ namespace SPTAG
             if (workspaceSize2 > 0)
                 aclrtMalloc(&workspaceAddr2, workspaceSize2, ACL_MEM_MALLOC_HUGE_FIRST);
             aclnnGather(workspaceAddr2, workspaceSize2, executor2, stream);
-            auto comEndTimeGather = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double, std::milli> comelapsedGather = comEndTimeGather - comStartTimeGather;
-            double comelapsedMillisecondsGather = comelapsedGather.count();
-            p_stats->gather = comelapsedMillisecondsGather;
-            auto comStartTimeSum = std::chrono::high_resolution_clock::now();
             uint64_t workspaceSize3 = 0;
             aclOpExecutor* executor3;
             aclnnReduceSumGetWorkspaceSize(gather_tensor, dims, keepDims, aclDataType::ACL_FLOAT, dist_tensor, &workspaceSize3, &executor3);
             if (workspaceSize3 > 0)
                 aclrtMalloc(&workspaceAddr3, workspaceSize3, ACL_MEM_MALLOC_HUGE_FIRST);
             aclnnReduceSum(workspaceAddr3, workspaceSize3, executor3, stream);
-            auto comEndTimeSum = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double, std::milli> comelapsedSum = comEndTimeSum - comStartTimeSum;
-            double comelapsedMillisecondsSum = comelapsedSum.count();
-            p_stats->sum = comelapsedMillisecondsSum;
+            if (numVectorCPU > 0)
+            {
+                std::vector<uint8_t> pq_ids(numVectorCPU * PQVectorDim);
+                std::vector<float> dists_out(numVectorCPU);
+                const float *pq_dists = reinterpret_cast<const float *>(h_table);
+                int idx = 0;
+                for (size_t i = numVectorGPU; i < totalNumVector; i++)
+                {
+                    const uint8_t *vector = reinterpret_cast<const uint8_t *>(vectorSet->GetVector(vectorIDs[i]));
+                    memcpy(pq_ids.data() + idx * PQVectorDim, vector, PQVectorDim);
+                    idx ++;
+                }
+                for (size_t i = 0; i < numVectorCPU; i++)
+                {
+                    dists_out[i] = L2Distance_Dmul4(h_table, pq_ids.data() + PQVectorDim * i, PQVectorDim);
+                }
+                for (size_t i = numVectorGPU; i < totalNumVector; i++)
+                    queryResults->AddPoint(vectorIDs[i], dists_out[i - numVectorGPU]);
+            }
             aclrtSynchronizeStream(stream);
             auto comEndTime = std::chrono::high_resolution_clock::now();
             std::chrono::duration<double, std::milli> comelapsed = comEndTime - comStartTime;
@@ -783,13 +787,16 @@ namespace SPTAG
             aclDestroyTensor(cast_tensor);
             aclDestroyTensor(table_tensor);
             aclDestroyIntArray(dims);
-            free(tmp);
+            // free(tmp);
             aclrtFree(d_cast);
             aclrtFree(d_gather);
             aclrtFree(d_set);
-            aclrtFree(workspaceAddr1);
-            aclrtFree(workspaceAddr2);
-            aclrtFree(workspaceAddr3);
+            if (workspaceSize1 > 0)
+                aclrtFree(workspaceAddr1);
+            if (workspaceSize2 > 0)
+                aclrtFree(workspaceAddr2);
+            if (workspaceSize3 > 0)
+                aclrtFree(workspaceAddr3);
             aclrtDestroyStream(stream);
             aclrtResetDevice(0);
             aclFinalize();
